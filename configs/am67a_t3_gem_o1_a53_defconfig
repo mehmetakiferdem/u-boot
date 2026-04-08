@@ -68,3 +68,4 @@ CONFIG_SYS_MMCSD_RAW_MODE_EMMC_BOOT_PARTITION=0
 CONFIG_BOOTMETH_ANDROID=y                                                                                                                                                                                                                  
 CONFIG_ANDROID_AB=y                                                                                                                                                                                                                          
 CONFIG_ANDROID_BOOT_IMAGE=y
+CONFIG_CMD_ABOOTIMG=y 
