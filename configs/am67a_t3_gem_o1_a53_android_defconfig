@@ -7,22 +7,11 @@
  * defconfig, so board support, device tree and environment stay single-source.
  * The matching environment lives behind #if CONFIG_BOOTMETH_ANDROID in
  * board/t3/t3-gem-o1/t3-gem-o1.env.
+ *
+ * The delta itself lives in the fragment, not here, so that TI's bootloader
+ * build (config/boards/*.yaml, defconfig_fragments:) and a plain
+ *   make am67a_t3_gem_o1_a53_android_defconfig
+ * cannot drift apart. Keep the fragment free of '#' comments - it is included
+ * by the C preprocessor from here as well as merged by merge_config.sh.
  */
-
-CONFIG_BOOTMETH_ANDROID=y
-CONFIG_ANDROID_AB=y
-CONFIG_ANDROID_BOOT_IMAGE=y
-CONFIG_CMD_ABOOTIMG=y
-
-CONFIG_USB_FUNCTION_FASTBOOT=y
-CONFIG_FASTBOOT_BUF_ADDR=0xC0000000
-CONFIG_FASTBOOT_BUF_SIZE=0x2F000000
-CONFIG_FASTBOOT_FLASH=y
-CONFIG_FASTBOOT_FLASH_MMC_DEV=0
-CONFIG_FASTBOOT_CMD_OEM_FORMAT=y
-CONFIG_CMD_GPT=y
-CONFIG_RANDOM_UUID=y
-
-CONFIG_SUPPORT_EMMC_BOOT=y
-CONFIG_SUPPORT_EMMC_BOOT_OVERRIDE_PART_CONFIG=y
-CONFIG_SYS_MMCSD_RAW_MODE_EMMC_BOOT_PARTITION=0
+#include <configs/am67a_t3_gem_o1_a53_android.config>
