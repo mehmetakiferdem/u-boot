@@ -1,0 +1,17 @@
+#include <configs/am67a_t3_gem_o1_a53_defconfig>
+
+/*
+ * Android A53 U-Boot for T3 Gemstone O1.
+ *
+ * Deliberately nothing but a delta on top of the Linux (Yocto/Debian)
+ * defconfig, so board support, device tree and environment stay single-source.
+ * The matching environment lives behind #if CONFIG_BOOTMETH_ANDROID in
+ * board/t3/t3-gem-o1/t3-gem-o1.env.
+ *
+ * The delta itself lives in the fragment, not here, so that TI's bootloader
+ * build (config/boards/*.yaml, defconfig_fragments:) and a plain
+ *   make am67a_t3_gem_o1_a53_android_defconfig
+ * cannot drift apart. Keep the fragment free of '#' comments - it is included
+ * by the C preprocessor from here as well as merged by merge_config.sh.
+ */
+#include <configs/am67a_t3_gem_o1_a53_android.config>
