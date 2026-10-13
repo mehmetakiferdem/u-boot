@@ -245,6 +245,7 @@
 #include <log.h>
 #include <malloc.h>
 #include <console.h>
+#include <time.h>
 #include <g_dnl.h>
 #include <dm/devres.h>
 #include <linux/bug.h>
@@ -1326,7 +1327,12 @@ static int do_start_stop(struct fsg_common *common)
 		return -EINVAL;
 	}
 
-	common->eject = 1;
+	/*
+	 * Only an eject request (LoEj set, Start clear) ends the session;
+	 * hosts also send START STOP UNIT to spin a unit up or down.
+	 */
+	if ((common->cmnd[4] & 0x03) == 0x02)
+		common->eject = 1;
 
 	return 0;
 }
@@ -2429,6 +2435,22 @@ int fsg_main_thread(void *common_)
 
 		if (!exception_in_progress(common))
 			common->state = FSG_STATE_IDLE;
+
+		/*
+		 * Leave as soon as the host has ejected the medium. sleep_thread()
+		 * only notices the eject once the host has been quiet for a while,
+		 * which a host that keeps polling the unit never is. Give the
+		 * status of the eject command time to go out first.
+		 */
+		if (common->eject) {
+			ulong start = get_timer(0);
+
+			while (get_timer(start) < 100) {
+				dm_usb_gadget_handle_interrupts(udcdev);
+				schedule();
+			}
+			return -EPIPE;
+		}
 	} while (0);
 
 	common->thread_task = NULL;
