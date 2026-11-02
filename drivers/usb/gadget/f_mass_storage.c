@@ -329,6 +329,8 @@ struct fsg_common {
 	unsigned int		bad_lun_okay:1;
 	unsigned int		running:1;
 	unsigned int		eject:1;
+	unsigned int		host_done:1;
+	ulong			host_done_at;
 
 	int			thread_wakeup_needed;
 	struct completion	thread_notifier;
@@ -651,6 +653,37 @@ static void busy_indicator(void)
 		state = 0;
 }
 
+/*
+ * macOS never sends the SCSI eject for USB storage: it marks every USB disk
+ * "Manual Eject" and only detaches it on its own side. A host that cannot
+ * eject says it is done by writing this to the last sector instead. The
+ * session ends once the host has had time to sync, close and detach the
+ * disk; leaving any sooner, macOS warns that it was not ejected properly.
+ */
+#define FSG_HOST_DONE_MAGIC	"U-Boot UMS: host is done, leave mass storage mode"
+#define FSG_HOST_DONE_GRACE_MS	5000
+
+static void check_host_done(struct fsg_common *common, struct fsg_lun *curlun,
+			    loff_t offset, unsigned int amount, const char *buf)
+{
+	loff_t last = (curlun->num_sectors - 1) * curlun->blksize;
+
+	if (offset <= last && last < offset + amount &&
+	    !memcmp(buf + (last - offset), FSG_HOST_DONE_MAGIC,
+		    sizeof(FSG_HOST_DONE_MAGIC))) {
+		common->host_done = 1;
+		common->host_done_at = get_timer(0);
+	}
+}
+
+/* The host ejected the medium, or said it is done and has had its moment */
+static bool session_over(struct fsg_common *common)
+{
+	return common->eject ||
+	       (common->host_done &&
+		get_timer(common->host_done_at) >= FSG_HOST_DONE_GRACE_MS);
+}
+
 static int sleep_thread(struct fsg_common *common)
 {
 	int	rc = 0;
@@ -668,8 +701,8 @@ static int sleep_thread(struct fsg_common *common)
 		}
 
 		if (k == 10) {
-			/* Handle START-STOP UNIT */
-			if (common->eject)
+			/* Handle START-STOP UNIT, or a host that is done */
+			if (session_over(common))
 				return -EPIPE;
 
 			/* Handle CTRL+C */
@@ -948,6 +981,9 @@ static int do_write(struct fsg_common *common)
 			if (!rc)
 				return -EIO;
 			nwritten = rc * curlun->blksize;
+			if (nwritten == amount)
+				check_host_done(common, curlun, file_offset,
+						amount, (const char *)bh->buf);
 
 			VLDBG(curlun, "file write %u @ %llu -> %d\n", amount,
 					(unsigned long long) file_offset,
@@ -2440,9 +2476,10 @@ int fsg_main_thread(void *common_)
 		 * Leave as soon as the host has ejected the medium. sleep_thread()
 		 * only notices the eject once the host has been quiet for a while,
 		 * which a host that keeps polling the unit never is. Give the
-		 * status of the eject command time to go out first.
+		 * status of the eject command time to go out first. A host that
+		 * said it is done gets the same once its moment has passed.
 		 */
-		if (common->eject) {
+		if (session_over(common)) {
 			ulong start = get_timer(0);
 
 			while (get_timer(start) < 100) {
