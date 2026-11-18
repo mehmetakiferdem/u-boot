@@ -10,6 +10,8 @@
 #include <dm/uclass.h>
 #include <env.h>
 #include <fdt_support.h>
+#include <g_dnl.h>
+#include <asm/unaligned.h>
 #include <spl.h>
 #include <asm/arch/k3-ddr.h>
 
@@ -20,6 +22,28 @@ void set_dfu_alt_info(char *interface, char *devstr)
 		env_set("dfu_alt_info", update_info.dfu_string);
 }
 #endif
+
+/*
+ * In ums mode, present the standard Linux mass storage gadget IDs instead of
+ * the DFU ones. Windows hosts that bound WinUSB to 0451:6165 for DFU would
+ * otherwise bind it to the mass storage gadget as well, and no disk would
+ * appear.
+ */
+#define T3_UMS_VENDOR_NUM	0x0525
+#define T3_UMS_PRODUCT_NUM	0xA4A5
+
+int g_dnl_bind_fixup(struct usb_device_descriptor *dev, const char *name)
+{
+	if (!strcmp(name, "usb_dnl_ums")) {
+		put_unaligned(T3_UMS_VENDOR_NUM, &dev->idVendor);
+		put_unaligned(T3_UMS_PRODUCT_NUM, &dev->idProduct);
+	} else {
+		/* The descriptor is static: undo the above for DFU and fastboot */
+		put_unaligned(CONFIG_USB_GADGET_VENDOR_NUM, &dev->idVendor);
+		put_unaligned(CONFIG_USB_GADGET_PRODUCT_NUM, &dev->idProduct);
+	}
+	return 0;
+}
 
 int board_init(void)
 {
@@ -33,6 +57,24 @@ int board_fit_config_name_match(const char *name)
 		return 0;
 
 	return -1;
+}
+#endif
+
+#if IS_ENABLED(CONFIG_SPL_BOARD_INIT)
+/*
+ * The board has a 32.768 kHz crystal on WKUP_LFOSC0, but the SoC comes up
+ * taking its 32k clock from the internal RC oscillator, which runs at about
+ * 32.55 kHz: Linux warns that the RTC clock is not 32768 Hz, and the RTC,
+ * debounce and wakeup timers drift. Start the crystal and take the 32k clock
+ * from it, once, from the R5 SPL.
+ */
+void spl_board_init(void)
+{
+	if (IS_ENABLED(CONFIG_CPU_V7R)) {
+		clrbits_le32(MCU_CTRL_LFXOSC_CTRL, MCU_CTRL_LFXOSC_32K_DISABLE_VAL);
+		writel(MCU_CTRL_DEVICE_CLKOUT_LFOSC_SELECT_VAL,
+		       MCU_CTRL_DEVICE_CLKOUT_32K_CTRL);
+	}
 }
 #endif
 

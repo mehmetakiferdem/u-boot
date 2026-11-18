@@ -58,6 +58,7 @@ config TARGET_J722S_R5_T3_GEM_O1
 	select SPL_RAM
 	select K3_DDRSS
 	select BINMAN
+	imply SPL_BOARD_INIT
 	imply SYS_K3_SPL_ATF
 
 endchoice
